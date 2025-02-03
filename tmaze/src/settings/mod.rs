@@ -2,12 +2,10 @@ mod attribute;
 pub mod theme;
 
 use cmaze::{
+    algorithms::{MazeSpec, MazeSpecType},
     dims::{Dims, Offset},
-    game::GeneratorFn,
-    gameboard::algorithms::MazeAlgorithm,
 };
 use derivative::Derivative;
-use ron::{self, extensions::Extensions};
 use serde::{Deserialize, Serialize};
 use std::{
     fs, io,
@@ -27,46 +25,57 @@ use crate::{
 #[cfg(feature = "sound")]
 use crate::sound::create_audio_settings;
 
-const DEFAULT_SETTINGS: &str = include_str!("./default_settings.ron");
+const DEFAULT_SETTINGS_JSON: &str = include_str!("./default_settings.json5");
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(tag = "mode")]
 pub enum CameraMode {
     #[default]
     CloseFollow,
-    EdgeFollow(Offset, Offset),
+    EdgeFollow {
+        x: Offset,
+        y: Offset,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MazePreset {
     pub title: String,
-    pub width: u16,
-    pub height: u16,
-    #[serde(default = "default_depth")]
-    pub depth: u16,
-    #[serde(default)]
-    pub tower: bool,
+    pub description: Option<String>,
+
     #[serde(default)]
     pub default: bool,
+
+    // TODO: make `serde(flatten)` once switched to TOML/JSON
+    #[serde(flatten)]
+    pub maze_spec: MazeSpec,
 }
 
-fn default_depth() -> u16 {
-    1
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
-pub enum MazeGenAlgo {
-    #[default]
-    RandomKruskals,
-    DepthFirstSearch,
-}
-
-impl MazeGenAlgo {
-    pub fn to_fn(&self) -> GeneratorFn {
-        match self {
-            MazeGenAlgo::RandomKruskals => cmaze::gameboard::algorithms::RndKruskals::generate,
-            MazeGenAlgo::DepthFirstSearch => {
-                cmaze::gameboard::algorithms::DepthFirstSearch::generate
+impl MazePreset {
+    pub fn short_desc(&self) -> String {
+        let (size, cells): (_, usize) = match &self.maze_spec.inner_spec {
+            MazeSpecType::Regions { regions, .. } => (
+                self.maze_spec.size().unwrap(),
+                regions.iter().map(|r| r.mask.enabled_count()).sum(),
+            ),
+            MazeSpecType::Simple { mask, .. } => {
+                let size = self.maze_spec.size().unwrap();
+                (
+                    size,
+                    mask.as_ref()
+                        .map(|m| m.enabled_count())
+                        .unwrap_or(size.product() as usize),
+                )
             }
+        };
+
+        if size.2 == 1 {
+            format!("{}: {}x{} ({} cells)", self.title, size.0, size.1, cells)
+        } else {
+            format!(
+                "{}: {}x{}x{} ({} cells)",
+                self.title, size.0, size.1, size.2, cells
+            )
         }
     }
 }
@@ -85,6 +94,7 @@ pub enum UpdateCheckInterval {
 #[derive(Debug, Derivative, Serialize, Deserialize)]
 #[derivative(Default)]
 #[serde(rename = "Settings")]
+// FIXME: separate sections into their own struct
 pub struct SettingsInner {
     // general
     #[serde(default)]
@@ -124,13 +134,8 @@ pub struct SettingsInner {
     #[serde(default)]
     pub enable_dpad_highlight: Option<bool>,
 
-    // game config
-    #[serde(default)]
-    pub default_maze_gen_algo: Option<MazeGenAlgo>,
-    #[serde(default)]
-    pub dont_ask_for_maze_algo: Option<bool>,
-    #[serde(default)]
     // update check
+    #[serde(default)]
     pub update_check_interval: Option<UpdateCheckInterval>,
     #[serde(default)]
     pub display_update_check_errors: Option<bool>,
@@ -145,9 +150,9 @@ pub struct SettingsInner {
     #[serde(default)]
     pub music_volume: Option<f32>,
 
-    // mazes
+    // presets
     #[serde(default)]
-    pub mazes: Option<Vec<MazePreset>>,
+    pub presets: Option<Vec<MazePreset>>,
     // TODO: it's not possible in RON to have a HashMap with flattened keys,
     // so we will support it in different way formats
     // once we support them - this would mean dropping RON support
@@ -157,7 +162,7 @@ pub struct SettingsInner {
 
 #[derive(Debug, Clone)]
 pub struct Settings {
-    inner: Arc<RwLock<SettingsInner>>,
+    shared: Arc<RwLock<SettingsInner>>,
     path: PathBuf,
     read_only: bool,
 }
@@ -166,7 +171,7 @@ impl Default for Settings {
     fn default() -> Self {
         let settings = SettingsInner::default();
         Self {
-            inner: Arc::new(RwLock::new(settings)),
+            shared: Arc::new(RwLock::new(settings)),
             path: settings_path(),
             read_only: false,
         }
@@ -188,11 +193,11 @@ impl Settings {
     }
 
     pub fn read(&self) -> std::sync::RwLockReadGuard<SettingsInner> {
-        self.inner.read().unwrap()
+        self.shared.read().unwrap()
     }
 
     pub fn write(&mut self) -> std::sync::RwLockWriteGuard<SettingsInner> {
-        self.inner.write().unwrap()
+        self.shared.write().unwrap()
     }
 }
 
@@ -341,24 +346,6 @@ impl Settings {
         self
     }
 
-    pub fn set_default_maze_gen_algo(&mut self, value: MazeGenAlgo) -> &mut Self {
-        self.write().default_maze_gen_algo = Some(value);
-        self
-    }
-
-    pub fn get_default_maze_gen_algo(&self) -> MazeGenAlgo {
-        self.read().default_maze_gen_algo.unwrap_or_default()
-    }
-
-    pub fn set_dont_ask_for_maze_algo(&mut self, value: bool) -> &mut Self {
-        self.write().dont_ask_for_maze_algo = Some(value);
-        self
-    }
-
-    pub fn get_dont_ask_for_maze_algo(&self) -> bool {
-        self.read().dont_ask_for_maze_algo.unwrap_or_default()
-    }
-
     pub fn set_check_interval(&mut self, value: UpdateCheckInterval) -> &mut Self {
         self.write().update_check_interval = Some(value);
         self
@@ -413,55 +400,49 @@ impl Settings {
         self
     }
 
-    pub fn set_mazes(&mut self, value: Vec<MazePreset>) -> &mut Self {
-        self.write().mazes = Some(value);
+    pub fn set_presets(&mut self, value: Vec<MazePreset>) -> &mut Self {
+        self.write().presets = Some(value);
         self
     }
 
-    pub fn get_mazes(&self) -> Vec<MazePreset> {
-        self.read().mazes.clone().unwrap_or_default()
+    pub fn get_presets(&self) -> Vec<MazePreset> {
+        self.read().presets.clone().unwrap_or_default()
     }
 }
 
+// JSON
 impl Settings {
-    pub fn load(path: PathBuf, read_only: bool) -> io::Result<Self> {
-        let default_settings_string = DEFAULT_SETTINGS;
-
+    pub fn load_json(path: PathBuf, read_only: bool) -> io::Result<Self> {
         let settings_string = fs::read_to_string(&path);
-        let options = ron::Options::default().with_default_extension(Extensions::IMPLICIT_SOME);
         let settings: SettingsInner = if let Ok(settings_string) = settings_string {
-            options
-                .from_str(&settings_string)
-                .expect("Could not parse settings file")
-        } else if !read_only {
-            fs::create_dir_all(path.parent().unwrap())?;
-            fs::write(&path, default_settings_string)?;
-            options.from_str(default_settings_string).unwrap()
+            json5::from_str(&settings_string)
+                .expect("Could not parse settings file: check the syntax")
         } else {
-            options.from_str(default_settings_string).unwrap()
+            if !read_only {
+                fs::create_dir_all(path.parent().unwrap())?;
+                fs::write(&path, DEFAULT_SETTINGS_JSON)?;
+            }
+            json5::from_str(DEFAULT_SETTINGS_JSON).unwrap()
         };
 
         Ok(Self {
-            inner: Arc::new(RwLock::new(settings)),
+            shared: Arc::new(RwLock::new(settings)),
             path,
             read_only,
         })
     }
 
-    pub fn reset(&mut self) {
-        let default_settings_string = DEFAULT_SETTINGS;
-        let options = ron::Options::default().with_default_extension(Extensions::IMPLICIT_SOME);
-        *self.write() = options.from_str(default_settings_string).unwrap();
+    pub fn reset_json(&mut self) {
+        *self.write() = json5::from_str(DEFAULT_SETTINGS_JSON).unwrap();
 
         let path = settings_path();
-        fs::write(&path, default_settings_string).unwrap();
+        fs::write(&path, DEFAULT_SETTINGS_JSON).unwrap();
 
         self.path = path;
     }
 
-    pub fn reset_config(path: PathBuf) {
-        let default_settings_string = DEFAULT_SETTINGS;
-        fs::write(path, default_settings_string).unwrap();
+    pub fn reset_json_config(path: PathBuf) {
+        fs::write(path, DEFAULT_SETTINGS_JSON).unwrap();
     }
 }
 

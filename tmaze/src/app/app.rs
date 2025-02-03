@@ -1,6 +1,15 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-use cmaze::dims::*;
+use cmaze::{
+    algorithms::{
+        region_generator::{DepthFirstSearch, RndKruskals}, region_splitter::DefaultRegionSplitter, GeneratorRegistry,
+        SplitterRegistry,
+    },
+    dims::*,
+};
 
 use crossterm::event::{read, KeyCode, KeyEvent, KeyEventKind};
 
@@ -20,7 +29,7 @@ use crate::{
 use crate::sound::{track::MusicTrack, SoundPlayer};
 
 #[cfg(feature = "sound")]
-use rodio::Source;
+use rodio::{self, Source};
 
 use super::{
     activity::{Activities, Activity, ActivityResult, Change},
@@ -43,6 +52,7 @@ pub struct AppData {
     pub screen_size: Dims,
     pub theme: Theme,
     pub logs: UiLogs,
+    pub registries: Registries,
     jobs: Jobs,
     app_start: Instant,
 
@@ -82,6 +92,11 @@ impl AppData {
     }
 }
 
+pub struct Registries {
+    pub region_splitters: SplitterRegistry,
+    pub region_generator: GeneratorRegistry,
+}
+
 impl App {
     /// Create a new app with a base activity
     ///
@@ -107,16 +122,29 @@ impl App {
     /// - initializes the sound player (if the feature is enabled),
     /// - initializes the logging system,
     /// - initializes the job queue,
+    /// - initializes the registries,
     pub fn empty(read_only: bool) -> Self {
         let renderer = Renderer::new().expect("failed to create renderer");
         let activities = Activities::empty();
 
-        let settings = Settings::load(settings_path(), read_only).expect("failed to load settings");
+        let settings =
+            Settings::load_json(settings_path(), read_only).expect("failed to load settings");
         let save = SaveData::load().expect("failed to load save data");
         let use_data = AppStateData::default();
         let jobs = Jobs::new();
         let app_start = Instant::now();
         let frame_size = renderer.frame_size();
+        let registries = Registries {
+            region_splitters: SplitterRegistry::with_default(
+                Arc::new(DefaultRegionSplitter),
+                "default",
+            ),
+            region_generator: {
+                let mut reg = GeneratorRegistry::with_default(Arc::new(RndKruskals), "rnd_kruskals");
+                reg.register("dfs", Arc::new(DepthFirstSearch));
+                reg
+            },
+        };
 
         log::info!("Loading theme");
         let resolver = init_theme_resolver();
@@ -146,6 +174,7 @@ impl App {
                 jobs,
                 theme,
                 logs,
+                registries,
 
                 #[cfg(feature = "sound")]
                 sound_player,

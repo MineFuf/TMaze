@@ -9,12 +9,12 @@ repository = "https://github.com/ur-fault/tmaze"
 
 [dependencies]
 rand = "^0.8.5"
-thiserror = "1.0.64"
+thiserror = "2"
 pausable_clock = "^1.0.1"
 rayon = "^1.10.0"
-hashbrown = { version = "0.14", optional = true }
+hashbrown  = "0.14"
 log = "0.4"
 serde = { version = "^1", features = ["derive"] }
-
-[features]
-hashbrown = ["dep:hashbrown"]
+rand_xoshiro = "^0.6.0"
+smallvec = { version = "1.13.2", features = ["const_generics"] }
+base64 = "0.22.1"

@@ -1,0 +1,167 @@
+{
+    // theme of the game, if None, default theme will be used.
+    // default theme is automatically loaded from <game config>/themes/default_theme.json5,
+    // which is generated when none is found.
+    //
+    // Othwerwise, you can specify your own theme file, which will be loaded
+    // from the <game config>/themes directory. It can be either .json[5] or .toml format.
+    "theme": "theme.json",
+
+    // logging levels for different logging mechanisms in the game.
+    // - valid levels:
+    //  - trace
+    //  - debug
+    //  - info
+    //  - warn
+    //  - error
+    // 
+    // messages in the UI
+    "logging_level": "warn",
+    // messages in the UI if debug mode is enabled
+    "debug_logging_level": "debug",
+    // messages in the log file
+    "file_logging_level": "info",
+
+    // player will move only one space at the time,
+    // otherwise it will move until other possible move
+    "slow": false,
+    // slow: true,
+
+    // in tower maze, player will automatically move up when possible
+    "disable_tower_auto_up": false,
+    // disable_tower_auto_up: true,
+
+    // when maze cannot fit on the screen
+    // camera_mode:
+    // - valid modes
+    //  - CloseFollow - player will always be centered
+    //  - EdgeFollow(horizontal margin, vertical margin)
+    //     player will move on screen, but when he hits margin
+    //     he will be centered on that axis.
+    //     margin can be either relative (0.0 - 0.5 or absolute
+    //     when it's fractional, it's relative to the viewport size
+    //     when it's absolute, it's in characters
+    "camera_mode": {
+        "mode": "CloseFollow"
+    },
+    // "camera_mode": {
+    //    "mode": "EdgeFollow",
+    //    "x": 10,
+    //    "y": 5
+    // }
+    // "camera_mode": {
+    //   "mode": "EdgeFollow",
+    //   "x": 0.25,
+    //   "y": 0.25
+    // },
+
+    // smoothing of the camera movement, values 0.5 - 1.0
+    "camera_smoothing": 0.8,
+
+    // player movement smoothing, values 0.5 - 1.0
+    "player_smoothing": 0.5,
+
+    // viewport margin, space between edges of the screen and maze/dpad
+    // value is a tuple of two integeres, horizontal and vertical margin
+    "viewport_margin": [4, 3],
+
+    // enable mouse input
+    "enable_mouse": true,
+
+    // enable dpad, it is virtual controller for mobile devices
+    "enable_dpad": false,
+
+    // default algorithm used for maze generation
+    "default_maze_gen_algo": "RandomKruskals",
+    // "default_maze_gen_algo": DepthFirstSearch,
+
+    // skip prompt for maze generation algorithm
+    "dont_ask_for_maze_algo": true,
+    // "dont_ask_for_maze_algo": false,
+
+    // update check interval
+    // - valid intervals:
+    //  - Never
+    //  - Daily
+    //  - Weekly
+    //  - Monthly
+    //  - Yearly
+    //  - Always
+    "update_check_interval": "Daily",
+
+    // display update check errors,
+    // when false display on successfully found new version
+    "display_update_check_errors": true,
+    // "display_update_check_errors": false,
+
+    // enable audio, if false, no audio will be played
+    "enable_audio": true,
+    // "enable_audio": false,
+
+    // audio volume, 0.0 - 1.0, value is clamped, must not be NaN
+    "audio_volume": 0.5,
+
+    // enable music, needs to have audio enabled
+    "enable_music": true,
+    // "enable_music": false,
+
+    // music volume, 0.0 - 1.0, value is clamped, must not be NaN
+    "music_volume": 0.5,
+
+    // lists of maze presets
+    "presets": [
+        // Preset:
+        // - title - title of the preset
+        // - size - array of 3 integers, width, height, depth
+        // - maze_type - type of the maze
+        //   - normal - normal maze
+        //   - tower - tower
+        // - default - selected by default in menu
+        // - type - type of the preset
+        //   - simple - basic generation config
+        //   - regions - specify generation regions or how to choose them
+        {
+            "title": "10x5",
+            "size": [10, 5, 1],
+            "default": true,
+            "type": "simple",
+        }, 
+        {
+            "title": "20x10",
+            "size": [20, 10, 1],
+            "type": "simple",
+        },
+        {
+            "title": "60x30",
+            "size": [60, 30, 1],
+            "type": "simple",
+        },
+        {
+            "title": "200x100",
+            "size": [200, 100, 1],
+            "type": "simple",
+        },
+        {
+            "title": "6x3x3",
+            "size": [6, 3, 3],
+            "type": "simple",
+        },
+        {
+            "title": "10x5x5",
+            "size": [10, 5, 5],
+            "type": "simple",
+        },
+        {
+            "title": "10x10x5 Tower",
+            "size": [10, 10, 5],
+            "maze_type": "tower",
+            "type": "simple",
+        },
+        {
+            "title": "40x15x10 Tower",
+            "size": [40, 15, 10],
+            "maze_type": "tower",
+            "type": "simple",
+        }
+    ]
+}

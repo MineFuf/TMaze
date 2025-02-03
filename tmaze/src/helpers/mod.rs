@@ -5,7 +5,7 @@ use core::fmt;
 
 use crossterm::event::KeyEventKind;
 
-use cmaze::{dims::*, gameboard::Maze};
+use cmaze::{dims::*, gameboard::maze::MazeBoard};
 
 #[inline]
 pub const fn line_center(container_start: i32, container_end: i32, item_width: i32) -> i32 {
@@ -21,7 +21,7 @@ pub const fn box_center(container_start: Dims, container_end: Dims, box_dims: Di
 }
 
 #[inline]
-pub fn maze_render_size(maze: &Maze) -> Dims {
+pub fn maze_render_size(maze: &MazeBoard) -> Dims {
     let msize = maze.size();
     Dims(msize.0, msize.1) * 2 + Dims(1, 1)
 }

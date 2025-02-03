@@ -11,12 +11,6 @@ pub struct Dims3D(pub i32, pub i32, pub i32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DimsU(pub usize, pub usize);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct GameMode {
-    pub size: Dims3D,
-    pub is_tower: bool,
-}
-
 impl Add for Dims {
     type Output = Dims;
 
@@ -104,6 +98,34 @@ impl From<Dims> for (i32, i32) {
 impl From<Dims3D> for Dims {
     fn from(dims: Dims3D) -> Self {
         Dims(dims.0, dims.1)
+    }
+}
+
+impl Dims3D {
+    pub const ZERO: Dims3D = Dims3D(0, 0, 0);
+    pub const ONE: Dims3D = Dims3D(1, 1, 1);
+
+    pub fn iter_fill(from: Dims3D, to: Dims3D) -> impl Iterator<Item = Dims3D> {
+        (from.0..to.0).flat_map(move |x| {
+            (from.1..to.1).flat_map(move |y| (from.2..to.2).map(move |z| Dims3D(x, y, z)))
+        })
+    }
+
+    pub fn all_positive(self) -> bool {
+        self.0 > 0 && self.1 > 0 && self.2 > 0
+    }
+
+    pub fn all_non_negative(self) -> bool {
+        self.0 >= 0 && self.1 >= 0 && self.2 >= 0
+    }
+
+    pub fn product(self) -> i32 {
+        self.0 * self.1 * self.2
+    }
+
+    pub fn linear_index(&self, size: Dims3D) -> usize {
+        assert!(self.all_non_negative());
+        (self.2 * size.0 * size.1 + self.1 * size.0 + self.0) as usize
     }
 }
 

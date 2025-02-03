@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use tmaze::{
     app::{
         app::{App, AppData},

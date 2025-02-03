@@ -9,7 +9,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
     helpers::{is_release, maze2screen_3d},
-    settings::Settings,
+    settings::{MazePreset, Settings},
 };
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -41,6 +41,7 @@ pub struct GameData {
     pub camera_pos: Dims3D,
     pub view_mode: GameViewMode,
     pub player_char: char,
+    pub maze_preset: MazePreset,
 }
 
 impl GameData {

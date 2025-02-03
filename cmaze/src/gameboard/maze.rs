@@ -1,27 +1,32 @@
-use self::CellWall::*;
-use crate::{dims::*, gameboard::cell::{Cell, CellWall}};
+use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 
-#[derive(Clone)]
-pub struct Maze {
-    pub(crate) cells: Vec<Vec<Vec<Cell>>>,
-    pub(crate) width: usize,
-    pub(crate) height: usize,
-    pub(crate) depth: usize,
-    pub(crate) is_tower: bool,
+use self::CellWall::*;
+use crate::{
+    algorithms::{CellMask, MazeType},
+    array::Array3D,
+    dims::*,
+    gameboard::cell::{Cell, CellWall},
+};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MazeBoard {
+    pub(crate) cells: Array3D<Cell>,
+    pub(crate) mask: CellMask,
 }
 
-impl Maze {
+impl MazeBoard {
     pub fn size(&self) -> Dims3D {
-        Dims3D(self.width as i32, self.height as i32, self.depth as i32)
+        self.cells.size()
     }
 
     pub fn is_in_bounds(&self, pos: Dims3D) -> bool {
         0 <= pos.0
-            && pos.0 < self.width as i32
+            && pos.0 < self.size().0
             && 0 <= pos.1
-            && pos.1 < self.height as i32
+            && pos.1 < self.size().1
             && 0 <= pos.2
-            && pos.2 < self.depth as i32
+            && pos.2 < self.size().2
     }
 
     pub fn is_valid_neighbor(&self, cell: Dims3D, off: Dims3D) -> bool {
@@ -53,35 +58,31 @@ impl Maze {
         }
     }
 
-    pub fn get_wall(&self, from: Dims3D, wall: CellWall) -> Option<bool> {
+    pub fn get_wall(&self, from: Dims3D, wall: CellWall) -> bool {
         let to = from + wall.to_coord();
-        if self.is_in_bounds(from) != self.is_in_bounds(to) {
-            return Some(true);
+
+        if !self.mask[from] || !self.mask[to] {
+            return self.mask[from] || self.mask[to];
         }
 
-        Some(
-            self.get_cell(from)
-                .map(|c| c.get_wall(wall))
-                .unwrap_or(false),
-        )
+        self.get_cell(from)
+            .map(|c| c.get_wall(wall))
+            .unwrap_or(false)
     }
 
-    pub fn get_neighbors(&self, cell: Dims3D) -> Vec<&Cell> {
-        let offsets = [
-            Dims3D(-1, 0, 0),
-            Dims3D(1, 0, 0),
-            Dims3D(0, -1, 0),
-            Dims3D(0, 1, 0),
-            Dims3D(0, 0, -1),
-            Dims3D(0, 0, 1),
-        ];
-        offsets
+    pub fn get_neighbors_pos(&self, cell: Dims3D) -> SmallVec<[Dims3D; 6]> {
+        CellWall::get_in_order()
             .into_iter()
+            .map(|wall| CellWall::to_coord(&wall))
             .filter(|off| self.is_valid_neighbor(cell, *off))
-            .map(|off| {
-                &self.cells[(cell.2 + off.2) as usize][(cell.1 + off.1) as usize]
-                    [(cell.0 + off.0) as usize]
-            })
+            .map(|off| cell + off)
+            .collect()
+    }
+
+    pub fn get_neighbors(&self, cell: Dims3D) -> SmallVec<[&Cell; 6]> {
+        self.get_neighbors_pos(cell)
+            .into_iter()
+            .filter_map(|pos| self.get_cell(pos))
             .collect()
     }
 
@@ -90,37 +91,41 @@ impl Maze {
             return;
         }
 
-        self.cells[cell.2 as usize][cell.1 as usize][cell.0 as usize].remove_wall(wall);
-        let neighbor_offset = wall.to_coord();
-        {
-            let x2 = (cell.0 + neighbor_offset.0) as usize;
-            let y2 = (cell.1 + neighbor_offset.1) as usize;
-            let z2 = (cell.2 + neighbor_offset.2) as usize;
-            self.cells[z2][y2][x2].remove_wall(wall.reverse_wall());
-        }
+        self.cells[cell].remove_wall(wall);
+        self.cells[cell + wall.to_coord()].remove_wall(wall.reverse_wall());
     }
 
-    pub fn get_cells(&self) -> &[Vec<Vec<Cell>>] {
+    pub fn get_cells(&self) -> &Array3D<Cell> {
         &self.cells
     }
 
     pub fn get_cell(&self, pos: Dims3D) -> Option<&Cell> {
-        if self.is_in_bounds(pos) {
-            Some(&self.cells[pos.2 as usize][pos.1 as usize][pos.0 as usize])
-        } else {
-            None
-        }
+        self.cells.get(pos)
     }
 
     pub fn get_cell_mut(&mut self, pos: Dims3D) -> Option<&mut Cell> {
         if self.is_in_bounds(pos) {
-            Some(&mut self.cells[pos.2 as usize][pos.1 as usize][pos.0 as usize])
+            Some(&mut self.cells[pos])
         } else {
             None
         }
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Maze {
+    pub board: MazeBoard,
+    pub(crate) type_: MazeType,
+    pub start: Dims3D,
+    pub end: Dims3D,
+}
+
+impl Maze {
+    pub fn size(&self) -> Dims3D {
+        self.board.size()
+    }
 
     pub fn is_tower(&self) -> bool {
-        self.is_tower
+        self.type_ == MazeType::Tower
     }
 }

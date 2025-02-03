@@ -1,17 +1,17 @@
 use crate::{
-    dims::*,
-    gameboard::{
-        algorithms::{GenErrorInstant, GenErrorThreaded, Progress, StopGenerationFlag},
-        CellWall, Maze,
+    algorithms::{
+        Generator, GeneratorError, GeneratorRegistry, MazeSpec, MazeType, SplitterRegistry,
     },
+    dims::*,
+    gameboard::{CellWall, Maze},
+    progress::{Progress, ProgressHandle},
 };
 
 use pausable_clock::{PausableClock, PausableInstant};
 
-use std::time::Duration;
 use std::{
-    sync::{Arc, Mutex},
     thread::{self, JoinHandle},
+    time::Duration,
 };
 
 #[derive(Debug)]
@@ -30,13 +30,9 @@ pub enum RunningGameState {
     Quitted,
 }
 
-pub type GeneratorFn =
-    fn(Dims3D, bool) -> Result<ProgressComm<Result<Maze, GenErrorThreaded>>, GenErrorInstant>;
-
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct GameProperities {
-    pub game_mode: GameMode,
-    pub generator: GeneratorFn,
+    pub maze_spec: MazeSpec,
 }
 
 pub enum MoveMode {
@@ -45,72 +41,61 @@ pub enum MoveMode {
     Fast,
 }
 
-pub struct ProgressComm<R> {
+pub struct RunningJob<R> {
     pub handle: JoinHandle<R>,
-    pub stop_flag: StopGenerationFlag,
-    pub recv: Arc<Mutex<Progress>>,
+    pub progress: ProgressHandle,
 }
 
-impl<R> ProgressComm<R> {
+impl<R> RunningJob<R> {
     pub fn progress(&self) -> Progress {
-        *self.recv.lock().unwrap()
+        self.progress.progress()
     }
 }
 
 pub struct RunningGame {
     maze: Maze,
     state: RunningGameState,
-    game_mode: GameMode,
-    gen_fn: GeneratorFn,
+    maze_spec: MazeSpec,
     #[allow(dead_code)]
     clock: Option<PausableClock>,
     start: Option<PausableInstant>,
     player_pos: Dims3D,
-    goal_pos: Dims3D,
     moves: Vec<(Dims3D, CellWall)>,
 }
 
 impl RunningGame {
-    pub fn new_threaded(
+    #[allow(unused_variables)]
+    pub fn prepare(
         props: GameProperities,
-    ) -> Result<ProgressComm<Result<RunningGame, GenErrorThreaded>>, GenErrorInstant> {
-        let GameProperities {
-            game_mode: maze_mode,
-            generator: generation_func,
-        } = props;
+        gen_registry: &GeneratorRegistry,
+        splitter_registry: &SplitterRegistry,
+    ) -> Result<RunningJob<Option<RunningGame>>, GeneratorError> {
+        if !props.maze_spec.validate(gen_registry, splitter_registry) {
+            return Err(GeneratorError::Validation);
+        }
 
-        let GameMode {
-            size: msize,
-            is_tower,
-        } = maze_mode;
+        let GameProperities { maze_spec } = props;
 
-        let player_pos = Dims3D(0, 0, 0);
-        let goal_pos = Dims3D(msize.0 - 1, msize.1 - 1, msize.2 - 1);
+        let generator = Generator::from_maze_spec(&maze_spec, gen_registry, splitter_registry);
 
-        let ProgressComm {
-            handle: maze_handle,
-            stop_flag,
-            recv: progress,
-        } = generation_func(msize, is_tower)?;
+        let progress = ProgressHandle::new();
+        let progress_clone = progress.clone();
 
-        Ok(ProgressComm {
-            handle: thread::spawn(move || {
-                let maze = maze_handle.join().unwrap()?;
-                Ok(RunningGame {
-                    maze,
-                    state: RunningGameState::NotStarted,
-                    game_mode: maze_mode,
-                    gen_fn: generation_func,
-                    clock: None,
-                    start: None,
-                    player_pos,
-                    goal_pos,
-                    moves: vec![],
-                })
-            }),
-            stop_flag,
-            recv: progress,
-        })
+        let handle = thread::spawn(move || {
+            let maze = generator.generate(progress_clone).ok()?;
+
+            Some(RunningGame {
+                player_pos: maze.start,
+                maze,
+                state: RunningGameState::NotStarted,
+                maze_spec,
+                clock: None,
+                start: None,
+                moves: vec![],
+            })
+        });
+
+        Ok(RunningJob { handle, progress })
     }
 
     pub fn get_state(&self) -> RunningGameState {
@@ -126,7 +111,7 @@ impl RunningGame {
     }
 
     pub fn get_goal_pos(&self) -> Dims3D {
-        self.goal_pos
+        self.maze.end
     }
 
     pub fn get_moves(&self) -> &Vec<(Dims3D, CellWall)> {
@@ -137,16 +122,12 @@ impl RunningGame {
         self.moves.len()
     }
 
-    pub fn get_game_mode(&self) -> GameMode {
-        self.game_mode
-    }
-
-    pub fn get_gen_fn(&self) -> GeneratorFn {
-        self.gen_fn
+    pub fn get_basic_game_spec(&self) -> &MazeSpec {
+        &self.maze_spec
     }
 
     pub fn get_available_moves(&self) -> [bool; 6] {
-        let cell = &self.maze.get_cell(self.player_pos).unwrap();
+        let cell = &self.maze.board.get_cell(self.player_pos).unwrap();
         CellWall::get_in_order().map(|wall| !cell.get_wall(wall))
     }
 
@@ -180,7 +161,13 @@ impl RunningGame {
 
         match move_mode {
             MoveMode::Slow => {
-                return if self.maze.get_cell(self.player_pos).unwrap().get_wall(dir) {
+                return if self
+                    .maze
+                    .board
+                    .get_cell(self.player_pos)
+                    .unwrap()
+                    .get_wall(dir)
+                {
                     Ok((self.player_pos, 0))
                 } else {
                     self.moves.push((self.player_pos, dir));
@@ -190,7 +177,13 @@ impl RunningGame {
             }
 
             MoveMode::Fast => {
-                while !self.maze.get_cell(self.player_pos).unwrap().get_wall(dir) {
+                while !self
+                    .maze
+                    .board
+                    .get_cell(self.player_pos)
+                    .unwrap()
+                    .get_wall(dir)
+                {
                     self.moves.push((self.player_pos, dir));
                     self.player_pos += dir.to_coord();
                     count += 1;
@@ -198,7 +191,7 @@ impl RunningGame {
             }
 
             MoveMode::Normal => loop {
-                let mut cell = self.maze.get_cell(self.player_pos).unwrap();
+                let mut cell = self.maze.board.get_cell(self.player_pos).unwrap();
 
                 if cell.get_wall(dir) {
                     break;
@@ -209,7 +202,7 @@ impl RunningGame {
                 self.moves.push((self.player_pos, dir));
                 self.player_pos += dir.to_coord();
 
-                cell = self.maze.get_cell(self.player_pos).unwrap();
+                cell = self.maze.board.get_cell(self.player_pos).unwrap();
 
                 let perps = dir.perpendicular_walls();
                 if !cell.get_wall(perps.0)
@@ -223,9 +216,10 @@ impl RunningGame {
         }
 
         if tower_auto_up
-            && self.game_mode.is_tower
+            && self.maze.type_ == MazeType::Tower
             && !self
                 .maze
+                .board
                 .get_cell(self.player_pos)
                 .unwrap()
                 .get_wall(CellWall::Up)
@@ -235,7 +229,7 @@ impl RunningGame {
             count += 1;
         }
 
-        if self.player_pos == self.goal_pos {
+        if self.player_pos == self.maze.end {
             self.state = RunningGameState::Finished;
             self.clock.as_mut().unwrap().pause();
         }

@@ -1,8 +1,9 @@
 /target
 *~
-/.idea/
+/.idea
 .DS_Store
 Session.vim
 tmaze/themes
-tmaze/**/*.ron
+tmaze/data.json
+tmaze/settings.json5
 log.txt

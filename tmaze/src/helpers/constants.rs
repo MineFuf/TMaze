@@ -46,11 +46,11 @@ pub mod paths {
     }
 
     pub fn settings_path() -> PathBuf {
-        base_path().join("settings.ron")
+        base_path().join("settings.json5")
     }
 
     pub fn save_data_path() -> PathBuf {
-        base_path().join("data.ron")
+        base_path().join("data.json")
     }
 
     pub fn log_file_path() -> PathBuf {

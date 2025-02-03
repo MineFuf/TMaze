@@ -52,6 +52,6 @@
         // Really cool feature is that you can define your own styles/keys,
         // which won't be used by the game, but you can reference them by other styles.
         // Basically custom constants, which can be resued in other styles.
-        // Meaning you can create a color pallete and then use that in your theme.
+        // For example you could create a color pallete and then use that in your theme.
     }
 }

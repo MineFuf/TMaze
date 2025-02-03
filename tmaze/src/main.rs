@@ -33,7 +33,7 @@ fn main() -> Result<(), GameError> {
     let _args = Args::parse();
 
     if _args.reset_config {
-        Settings::reset_config(settings_path());
+        Settings::reset_json_config(settings_path());
         return Ok(());
     }
 
@@ -48,7 +48,7 @@ fn main() -> Result<(), GameError> {
     }
 
     if _args.debug_config {
-        println!("{:#?}", Settings::load(settings_path(), true));
+        println!("{:#?}", Settings::load_json(settings_path(), true)?.read());
         return Ok(());
     }
 
